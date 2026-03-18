@@ -39,8 +39,13 @@ export async function GET(request: NextRequest) {
       videoData.items[0].snippet.thumbnails?.medium?.url || "";
 
     // 2. Fetch captions directly via timedtext (no OAuth required)
-    const enXml = await fetchCaptionXml(videoId, "en");
-    const koXml = await fetchCaptionXml(videoId, "ko");
+    // First get available tracks, then fetch with correct kind (manual or asr)
+    const tracks = await fetchCaptionTracks(videoId);
+    const enTrack = tracks.find((t) => t.lang === "en") || tracks.find((t) => t.lang.startsWith("en"));
+    const koTrack = tracks.find((t) => t.lang === "ko");
+
+    const enXml = enTrack ? await fetchCaptionXml(videoId, enTrack.lang, enTrack.kind) : null;
+    const koXml = koTrack ? await fetchCaptionXml(videoId, koTrack.lang, koTrack.kind) : null;
 
     const enCaptions = enXml ? parseCaptionXml(enXml) : [];
     const koCaptions = koXml ? parseCaptionXml(koXml) : null;
@@ -70,9 +75,34 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function fetchCaptionXml(videoId: string, lang: string): Promise<string | null> {
+async function fetchCaptionTracks(videoId: string): Promise<Array<{ lang: string; kind: string }>> {
   try {
-    const url = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=srv3`;
+    const url = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`;
+    const res = await fetch(url, { headers: { "Accept-Language": "en-US,en;q=0.9" } });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const tracks: Array<{ lang: string; kind: string }> = [];
+    const regex = /<track[^>]*lang_code="([^"]+)"[^>]*kind="([^"]*)"[^>]*/g;
+    const regexNoKind = /<track[^>]*lang_code="([^"]+)"[^>]*/g;
+    let match;
+    while ((match = regex.exec(xml)) !== null) {
+      tracks.push({ lang: match[1], kind: match[2] });
+    }
+    if (!tracks.length) {
+      while ((match = regexNoKind.exec(xml)) !== null) {
+        tracks.push({ lang: match[1], kind: "" });
+      }
+    }
+    return tracks;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCaptionXml(videoId: string, lang: string, kind: string): Promise<string | null> {
+  try {
+    const kindParam = kind === "asr" ? "&kind=asr" : "";
+    const url = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}${kindParam}&fmt=srv3`;
     const res = await fetch(url, {
       headers: { "Accept-Language": "en-US,en;q=0.9" },
     });
