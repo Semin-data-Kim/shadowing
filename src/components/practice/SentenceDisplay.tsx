@@ -1,65 +1,59 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { LightBulbIcon } from "@heroicons/react/24/outline";
 import { Caption } from "@/types";
 
 interface SentenceDisplayProps {
   caption: Caption;
-  revealed: boolean;
 }
 
-/** Deterministically picks ~40% of word indices to reveal, stable per sentence. */
-function getRevealedIndices(words: string[]): Set<number> {
-  let hash = 0;
-  const text = words.join(" ");
-  for (let i = 0; i < text.length; i++) {
-    hash = (Math.imul(hash, 31) + text.charCodeAt(i)) | 0;
-  }
+export default function SentenceDisplay({ caption }: SentenceDisplayProps) {
+  const [hintOn, setHintOn] = useState(false);
 
-  const targetCount = Math.max(1, Math.round(words.length * 0.4));
-  const indices = new Set<number>();
-  let seed = Math.abs(hash) || 1;
+  const words = useMemo(() => caption.textEn.split(/\s+/).filter(Boolean), [caption.textEn]);
 
-  while (indices.size < targetCount) {
-    seed = Math.imul(seed, 1664525) + 1013904223;
-    indices.add(Math.abs(seed) % words.length);
-  }
-
-  return indices;
-}
-
-export default function SentenceDisplay({ caption, revealed }: SentenceDisplayProps) {
-  const words = useMemo(() => caption.textEn.split(/\s+/), [caption.textEn]);
-  const revealedIndices = useMemo(() => getRevealedIndices(words), [words]);
+  // Show every other word starting from index 1 (odd indices)
+  const hintIndices = useMemo(
+    () => new Set(words.map((_, i) => i).filter((i) => i % 2 === 1)),
+    [words]
+  );
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <div className="text-2xl font-mono tracking-wider min-h-[2rem] flex flex-wrap gap-x-2 gap-y-1">
         {words.map((word, i) => {
-          if (!revealed) {
+          const clean = word.replace(/[\u2018\u2019\u02BC\u201C\u201D.,!?;:'"]/g, "");
+          if (hintOn && hintIndices.has(i)) {
             return (
-              <span key={i} className="text-gray-400">
-                {"_".repeat(word.replace(/[\u2018\u2019\u02BC\u201C\u201D.,!?;:'"]/g, "").length || 1)}
-              </span>
-            );
-          }
-          if (revealedIndices.has(i)) {
-            return (
-              <span key={i} className="text-red-600 font-semibold">
+              <span key={i} className="text-red-500 font-semibold bg-red-50 rounded px-0.5">
                 {word}
               </span>
             );
           }
           return (
             <span key={i} className="text-gray-400">
-              {"_".repeat(word.replace(/[\u2018\u2019\u02BC\u201C\u201D.,!?;:'"]/g, "").length || 1)}
+              {"_".repeat(clean.length || 1)}
             </span>
           );
         })}
       </div>
+
       {caption.textKo && (
         <div className="text-sm text-gray-500">{caption.textKo}</div>
       )}
+
+      <button
+        onClick={() => setHintOn((v) => !v)}
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          hintOn
+            ? "bg-amber-100 text-amber-700 border border-amber-300"
+            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        }`}
+      >
+        <LightBulbIcon className="w-4 h-4" />
+        {hintOn ? "힌트 끄기" : "힌트"}
+      </button>
     </div>
   );
 }

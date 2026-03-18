@@ -20,7 +20,6 @@ function PracticeContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [showHint, setShowHint] = useState(false);
   const [showResume, setShowResume] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [playerStarted, setPlayerStarted] = useState(false);
@@ -102,7 +101,6 @@ function PracticeContent() {
     if (!videoInfo) return;
 
     markSentenceComplete(currentIndex);
-    setShowHint(false);
 
     const newCompleted = [...completedSentences, currentIndex];
     saveProgress({
@@ -261,7 +259,7 @@ function PracticeContent() {
           <span>문장 {currentIndex + 1} / {videoInfo.captions.length}</span>
         </div>
 
-        <SentenceDisplay caption={caption} revealed={showHint} />
+        <SentenceDisplay caption={caption} />
 
         <TypingInput
           key={currentIndex}
@@ -274,8 +272,8 @@ function PracticeContent() {
           playerRef={playerRef}
           videoId={videoInfo.videoId}
           videoTitle={videoInfo.videoTitle}
-          onHint={() => setShowHint((h) => !h)}
-          showHint={showHint}
+          onHint={() => {}}
+          showHint={false}
         />
       </div>
     </div>
