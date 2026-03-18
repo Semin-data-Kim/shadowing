@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { YoutubeTranscript } from "youtube-transcript";
 import { Caption } from "@/types";
 
 export async function GET(request: NextRequest) {
@@ -38,43 +39,38 @@ export async function GET(request: NextRequest) {
     const thumbnailUrl =
       videoData.items[0].snippet.thumbnails?.medium?.url || "";
 
-    // 2. Fetch captions directly via timedtext (no OAuth required)
-    // First get available tracks, then fetch with correct kind (manual or asr)
-    const tracks = await fetchCaptionTracks(videoId);
-    console.log("[captions] tracks found:", JSON.stringify(tracks));
-
-    const enTrack = tracks.find((t) => t.lang === "en") || tracks.find((t) => t.lang.startsWith("en"));
-    const koTrack = tracks.find((t) => t.lang === "ko");
-    console.log("[captions] enTrack:", enTrack, "koTrack:", koTrack);
-
-    // If no tracks found from list, try common fallbacks directly
-    let enXml: string | null = null;
-    if (enTrack) {
-      enXml = await fetchCaptionXml(videoId, enTrack.lang, enTrack.kind);
-    } else {
-      // fallback: try manual en, then asr en
-      enXml = await fetchCaptionXml(videoId, "en", "") ?? await fetchCaptionXml(videoId, "en", "asr");
-    }
-    console.log("[captions] enXml length:", enXml?.length ?? 0);
-
-    const koXml = koTrack ? await fetchCaptionXml(videoId, koTrack.lang, koTrack.kind) : null;
-
-    const enCaptions = enXml ? parseCaptionXml(enXml) : [];
-    const koCaptions = koXml ? parseCaptionXml(koXml) : null;
-
-    if (!enCaptions.length) {
+    // 2. Fetch English captions via youtube-transcript
+    let enTranscript;
+    try {
+      enTranscript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
+    } catch {
       return NextResponse.json(
         { error: "No English captions available for this video" },
         { status: 404 }
       );
     }
 
-    const captions: Caption[] = enCaptions.map((c, i) => ({
+    if (!enTranscript.length) {
+      return NextResponse.json(
+        { error: "No English captions available for this video" },
+        { status: 404 }
+      );
+    }
+
+    // 3. Try to fetch Korean captions (optional)
+    let koTranscript: typeof enTranscript | null = null;
+    try {
+      koTranscript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "ko" });
+    } catch {
+      // Korean captions are optional
+    }
+
+    const captions: Caption[] = enTranscript.map((c, i) => ({
       index: i,
-      startTime: c.start,
-      endTime: c.start + c.dur,
+      startTime: c.offset / 1000,
+      endTime: (c.offset + c.duration) / 1000,
       textEn: c.text,
-      textKo: koCaptions?.[i]?.text,
+      textKo: koTranscript?.[i]?.text,
     }));
 
     return NextResponse.json({ videoTitle, thumbnailUrl, captions });
@@ -85,82 +81,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-async function fetchCaptionTracks(videoId: string): Promise<Array<{ lang: string; kind: string }>> {
-  try {
-    const url = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`;
-    const res = await fetch(url, { headers: { "Accept-Language": "en-US,en;q=0.9" } });
-    if (!res.ok) {
-      console.log("[captions] track list status:", res.status);
-      return [];
-    }
-    const xml = await res.text();
-    console.log("[captions] track list xml:", xml.slice(0, 500));
-    const tracks: Array<{ lang: string; kind: string }> = [];
-    // Match tracks with kind attribute
-    const regex = /<track[^>]*lang_code="([^"]+)"[^>]*kind="([^"]*)"[^>]*/g;
-    let match;
-    while ((match = regex.exec(xml)) !== null) {
-      tracks.push({ lang: match[1], kind: match[2] });
-    }
-    // Also match tracks without kind attribute (kind="")
-    const regexAll = /<track\s[^>]*lang_code="([^"]+)"[^>]*/g;
-    const seen = new Set(tracks.map((t) => t.lang + t.kind));
-    while ((match = regexAll.exec(xml)) !== null) {
-      const kindMatch = match[0].match(/kind="([^"]*)"/);
-      const kind = kindMatch ? kindMatch[1] : "";
-      const key = match[1] + kind;
-      if (!seen.has(key)) {
-        tracks.push({ lang: match[1], kind });
-        seen.add(key);
-      }
-    }
-    return tracks;
-  } catch (e) {
-    console.log("[captions] track list error:", e);
-    return [];
-  }
-}
-
-async function fetchCaptionXml(videoId: string, lang: string, kind: string): Promise<string | null> {
-  try {
-    const kindParam = kind === "asr" ? "&kind=asr" : "";
-    const url = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}${kindParam}&fmt=srv3`;
-    const res = await fetch(url, {
-      headers: { "Accept-Language": "en-US,en;q=0.9" },
-    });
-    if (!res.ok) return null;
-    const text = await res.text();
-    return text || null;
-  } catch {
-    return null;
-  }
-}
-
-function parseCaptionXml(
-  xml: string
-): Array<{ start: number; dur: number; text: string }> {
-  const results: Array<{ start: number; dur: number; text: string }> = [];
-  const regex = /<p[^>]*t="(\d+)"[^>]*d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
-  let match;
-
-  while ((match = regex.exec(xml)) !== null) {
-    const start = parseInt(match[1]) / 1000;
-    const dur = parseInt(match[2]) / 1000;
-    const rawText = match[3]
-      .replace(/<[^>]+>/g, "")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&#39;/g, "'")
-      .replace(/&quot;/g, '"')
-      .trim();
-
-    if (rawText) {
-      results.push({ start, dur, text: rawText });
-    }
-  }
-
-  return results;
 }
