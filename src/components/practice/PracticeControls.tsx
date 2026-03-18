@@ -1,0 +1,139 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { SpeakerWaveIcon, BookmarkIcon, LightBulbIcon } from "@heroicons/react/24/outline";
+import { BookmarkIcon as BookmarkSolid } from "@heroicons/react/24/solid";
+import { Caption, Bookmark } from "@/types";
+import { YouTubePlayerRef } from "@/components/player/YouTubePlayer";
+import { useAppStore } from "@/store/useAppStore";
+import { useToast } from "@/components/ui/Toast";
+import { formatTime } from "@/lib/validation";
+
+interface PracticeControlsProps {
+  caption: Caption;
+  playerRef: React.RefObject<YouTubePlayerRef | null>;
+  videoId: string;
+  videoTitle: string;
+  onHint: () => void;
+  showHint: boolean;
+}
+
+export default function PracticeControls({
+  caption,
+  playerRef,
+  videoId,
+  videoTitle,
+  onHint,
+  showHint,
+}: PracticeControlsProps) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { addBookmark, removeBookmark, isBookmarked, user } = useAppStore();
+  const { show, ToastComponent } = useToast();
+
+  const bookmarked = isBookmarked(videoId, caption.index);
+
+  const playSentence = () => {
+    if (!playerRef.current) return;
+
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    playerRef.current.seekTo(caption.startTime);
+    playerRef.current.playVideo();
+    setIsPlaying(true);
+
+    intervalRef.current = setInterval(() => {
+      const current = playerRef.current?.getCurrentTime() ?? 0;
+      if (current >= caption.endTime) {
+        playerRef.current?.pauseVideo();
+        setIsPlaying(false);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      }
+    }, 100);
+  };
+
+  const handleBookmark = () => {
+    if (!user) {
+      show("로그인이 필요합니다", "error");
+      return;
+    }
+
+    if (bookmarked) {
+      // Find and remove
+      const store = useAppStore.getState();
+      const bm = store.bookmarks.find(
+        (b) => b.videoId === videoId && b.timestamp === caption.index
+      );
+      if (bm) {
+        removeBookmark(bm.bookmarkId);
+        show("북마크가 삭제되었습니다", "info");
+      }
+    } else {
+      const bookmark: Bookmark = {
+        bookmarkId: `${videoId}-${caption.index}-${Date.now()}`,
+        userId: user.userId,
+        videoId,
+        videoTitle,
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}&t=${Math.floor(caption.startTime)}`,
+        timestamp: caption.index,
+        sentenceEn: caption.textEn,
+        sentenceKo: caption.textKo,
+        createdAt: new Date(),
+      };
+      addBookmark(bookmark);
+      show("북마크에 추가되었습니다 ⭐", "success");
+    }
+  };
+
+  return (
+    <>
+      {ToastComponent}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={playSentence}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            isPlaying
+              ? "bg-red-100 text-red-600 border border-red-200"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          <SpeakerWaveIcon className="w-4 h-4" />
+          {isPlaying ? "재생 중..." : "재생"}
+        </button>
+
+        <button
+          onClick={handleBookmark}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            bookmarked
+              ? "bg-yellow-100 text-yellow-600 border border-yellow-200"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          {bookmarked ? (
+            <BookmarkSolid className="w-4 h-4 text-yellow-500" />
+          ) : (
+            <BookmarkIcon className="w-4 h-4" />
+          )}
+          북마크
+        </button>
+
+        <button
+          onClick={onHint}
+          disabled={showHint}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            showHint
+              ? "bg-blue-100 text-blue-600 border border-blue-200"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          } disabled:opacity-50`}
+        >
+          <LightBulbIcon className="w-4 h-4" />
+          힌트
+        </button>
+
+        <span className="ml-auto text-xs text-gray-400">
+          {formatTime(caption.startTime)}
+        </span>
+      </div>
+    </>
+  );
+}
