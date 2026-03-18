@@ -1,12 +1,20 @@
 import { ValidationResult, DiffError } from "@/types";
 
+function normalize(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u02BC]/g, "'") // curly/smart apostrophes → straight
+    .replace(/[\u201C\u201D]/g, '"')         // curly double quotes → straight
+    .replace(/[.,!?;:'"]/g, "")              // remove punctuation
+    .replace(/\s+/g, " ")                    // collapse multiple spaces
+    .trim();
+}
+
 export function validateAnswer(
   userInput: string,
   correctAnswer: string
 ): ValidationResult {
-  // Remove punctuation
-  const cleanUser = userInput.replace(/[.,!?;:'"]/g, "").trim();
-  const cleanAnswer = correctAnswer.replace(/[.,!?;:'"]/g, "").trim();
+  const cleanUser = normalize(userInput);
+  const cleanAnswer = normalize(correctAnswer);
 
   if (cleanUser === cleanAnswer) {
     return { isCorrect: true, errors: [] };
@@ -35,8 +43,8 @@ function findDifferences(actual: string, expected: string): DiffError[] {
 
 export function maskSentence(text: string): string {
   return text
-    .split(" ")
-    .map((word) => "_".repeat(word.replace(/[.,!?;:'"]/g, "").length || 1))
+    .split(/\s+/)
+    .map((word) => "_".repeat(word.replace(/[\u2018\u2019\u02BC\u201C\u201D.,!?;:'"]/g, "").length || 1))
     .join(" ");
 }
 
