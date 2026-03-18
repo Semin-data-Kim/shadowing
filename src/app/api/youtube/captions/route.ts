@@ -38,47 +38,19 @@ export async function GET(request: NextRequest) {
     const thumbnailUrl =
       videoData.items[0].snippet.thumbnails?.medium?.url || "";
 
-    // 2. Get caption tracks
-    const captionRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${apiKey}`
-    );
-    const captionData = await captionRes.json();
+    // 2. Fetch captions directly via timedtext (no OAuth required)
+    const enXml = await fetchCaptionXml(videoId, "en");
+    const koXml = await fetchCaptionXml(videoId, "ko");
 
-    if (!captionData.items?.length) {
-      return NextResponse.json(
-        { error: "No captions available for this video" },
-        { status: 404 }
-      );
-    }
+    const enCaptions = enXml ? parseCaptionXml(enXml) : [];
+    const koCaptions = koXml ? parseCaptionXml(koXml) : null;
 
-    // Find English captions (prefer manually created over auto-generated)
-    const enTrack =
-      captionData.items.find(
-        (t: { snippet: { language: string; trackKind: string } }) =>
-          t.snippet.language === "en" && t.snippet.trackKind !== "asr"
-      ) ||
-      captionData.items.find(
-        (t: { snippet: { language: string } }) => t.snippet.language === "en"
-      );
-
-    const koTrack = captionData.items.find(
-      (t: { snippet: { language: string } }) => t.snippet.language === "ko"
-    );
-
-    if (!enTrack) {
+    if (!enCaptions.length) {
       return NextResponse.json(
         { error: "No English captions available for this video" },
         { status: 404 }
       );
     }
-
-    // 3. Download caption content (requires OAuth for non-public captions)
-    // For MVP, we parse TimedText XML from the public endpoint
-    const enXml = await fetchCaptionXml(videoId, "en");
-    const koXml = koTrack ? await fetchCaptionXml(videoId, "ko") : null;
-
-    const enCaptions = parseCaptionXml(enXml);
-    const koCaptions = koXml ? parseCaptionXml(koXml) : null;
 
     const captions: Caption[] = enCaptions.map((c, i) => ({
       index: i,
@@ -98,11 +70,18 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function fetchCaptionXml(videoId: string, lang: string): Promise<string> {
-  const url = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=srv3`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${lang} captions`);
-  return res.text();
+async function fetchCaptionXml(videoId: string, lang: string): Promise<string | null> {
+  try {
+    const url = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=srv3`;
+    const res = await fetch(url, {
+      headers: { "Accept-Language": "en-US,en;q=0.9" },
+    });
+    if (!res.ok) return null;
+    const text = await res.text();
+    return text || null;
+  } catch {
+    return null;
+  }
 }
 
 function parseCaptionXml(
