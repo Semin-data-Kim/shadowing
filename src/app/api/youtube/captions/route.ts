@@ -41,10 +41,22 @@ export async function GET(request: NextRequest) {
     // 2. Fetch captions directly via timedtext (no OAuth required)
     // First get available tracks, then fetch with correct kind (manual or asr)
     const tracks = await fetchCaptionTracks(videoId);
+    console.log("[captions] tracks found:", JSON.stringify(tracks));
+
     const enTrack = tracks.find((t) => t.lang === "en") || tracks.find((t) => t.lang.startsWith("en"));
     const koTrack = tracks.find((t) => t.lang === "ko");
+    console.log("[captions] enTrack:", enTrack, "koTrack:", koTrack);
 
-    const enXml = enTrack ? await fetchCaptionXml(videoId, enTrack.lang, enTrack.kind) : null;
+    // If no tracks found from list, try common fallbacks directly
+    let enXml: string | null = null;
+    if (enTrack) {
+      enXml = await fetchCaptionXml(videoId, enTrack.lang, enTrack.kind);
+    } else {
+      // fallback: try manual en, then asr en
+      enXml = await fetchCaptionXml(videoId, "en", "") ?? await fetchCaptionXml(videoId, "en", "asr");
+    }
+    console.log("[captions] enXml length:", enXml?.length ?? 0);
+
     const koXml = koTrack ? await fetchCaptionXml(videoId, koTrack.lang, koTrack.kind) : null;
 
     const enCaptions = enXml ? parseCaptionXml(enXml) : [];
@@ -79,22 +91,34 @@ async function fetchCaptionTracks(videoId: string): Promise<Array<{ lang: string
   try {
     const url = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`;
     const res = await fetch(url, { headers: { "Accept-Language": "en-US,en;q=0.9" } });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.log("[captions] track list status:", res.status);
+      return [];
+    }
     const xml = await res.text();
+    console.log("[captions] track list xml:", xml.slice(0, 500));
     const tracks: Array<{ lang: string; kind: string }> = [];
+    // Match tracks with kind attribute
     const regex = /<track[^>]*lang_code="([^"]+)"[^>]*kind="([^"]*)"[^>]*/g;
-    const regexNoKind = /<track[^>]*lang_code="([^"]+)"[^>]*/g;
     let match;
     while ((match = regex.exec(xml)) !== null) {
       tracks.push({ lang: match[1], kind: match[2] });
     }
-    if (!tracks.length) {
-      while ((match = regexNoKind.exec(xml)) !== null) {
-        tracks.push({ lang: match[1], kind: "" });
+    // Also match tracks without kind attribute (kind="")
+    const regexAll = /<track\s[^>]*lang_code="([^"]+)"[^>]*/g;
+    const seen = new Set(tracks.map((t) => t.lang + t.kind));
+    while ((match = regexAll.exec(xml)) !== null) {
+      const kindMatch = match[0].match(/kind="([^"]*)"/);
+      const kind = kindMatch ? kindMatch[1] : "";
+      const key = match[1] + kind;
+      if (!seen.has(key)) {
+        tracks.push({ lang: match[1], kind });
+        seen.add(key);
       }
     }
     return tracks;
-  } catch {
+  } catch (e) {
+    console.log("[captions] track list error:", e);
     return [];
   }
 }
