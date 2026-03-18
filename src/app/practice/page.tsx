@@ -9,7 +9,7 @@ import SentenceDisplay from "@/components/practice/SentenceDisplay";
 import TypingInput from "@/components/practice/TypingInput";
 import PracticeControls from "@/components/practice/PracticeControls";
 import ProgressBar from "@/components/ui/ProgressBar";
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, PlayIcon } from "@heroicons/react/24/solid";
 
 function PracticeContent() {
   const router = useRouter();
@@ -23,6 +23,8 @@ function PracticeContent() {
   const [showHint, setShowHint] = useState(false);
   const [showResume, setShowResume] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [playerStarted, setPlayerStarted] = useState(false);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
 
   const playerRef = useRef<YouTubePlayerRef>(null);
 
@@ -59,7 +61,6 @@ function PracticeContent() {
 
         setVideoInfo(info);
         setCurrentVideo(info);
-
         addRecentVideo(id, data.videoTitle, data.thumbnailUrl, 0);
 
         const savedProgress = getProgress(id);
@@ -82,6 +83,20 @@ function PracticeContent() {
     }
     loadVideo(videoId);
   }, [videoId, loadVideo, router]);
+
+  // When player becomes ready, seek to the current sentence and pause
+  const handlePlayerReady = useCallback(() => {
+    setIsPlayerReady(true);
+  }, []);
+
+  // Auto-seek to current sentence timestamp whenever sentence changes or player becomes ready
+  useEffect(() => {
+    if (!isPlayerReady || !videoInfo) return;
+    const caption = videoInfo.captions[currentIndex];
+    if (!caption) return;
+    playerRef.current?.seekTo(caption.startTime);
+    playerRef.current?.pauseVideo();
+  }, [currentIndex, isPlayerReady, videoInfo]);
 
   const handleCorrect = () => {
     if (!videoInfo) return;
@@ -212,8 +227,33 @@ function PracticeContent() {
         </div>
       )}
 
-      {/* YouTube Player */}
-      <YouTubePlayer ref={playerRef} videoId={videoId} />
+      {/* Video area: thumbnail start screen or YouTube player */}
+      {!playerStarted ? (
+        <button
+          onClick={() => setPlayerStarted(true)}
+          className="relative w-full aspect-video bg-black rounded-lg overflow-hidden group"
+        >
+          {videoInfo.thumbnailUrl ? (
+            <img
+              src={videoInfo.thumbnailUrl}
+              alt={videoInfo.videoTitle}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-gray-900" />
+          )}
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 group-hover:bg-black/50 transition-colors">
+            <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+              <PlayIcon className="w-8 h-8 text-white ml-1" />
+            </div>
+            <p className="mt-3 text-white text-sm font-medium drop-shadow">
+              클릭하여 학습 시작
+            </p>
+          </div>
+        </button>
+      ) : (
+        <YouTubePlayer ref={playerRef} videoId={videoId} onReady={handlePlayerReady} />
+      )}
 
       {/* Practice area */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
