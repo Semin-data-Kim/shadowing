@@ -274,7 +274,7 @@ function PracticeContent() {
           playerRef={playerRef}
           videoId={videoInfo.videoId}
           videoTitle={videoInfo.videoTitle}
-          onHint={() => setShowHint(true)}
+          onHint={() => setShowHint((h) => !h)}
           showHint={showHint}
         />
       </div>

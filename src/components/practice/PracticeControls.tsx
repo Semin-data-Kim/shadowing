@@ -119,12 +119,11 @@ export default function PracticeControls({
 
         <button
           onClick={onHint}
-          disabled={showHint}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
             showHint
               ? "bg-blue-100 text-blue-600 border border-blue-200"
               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          } disabled:opacity-50`}
+          }`}
         >
           <LightBulbIcon className="w-4 h-4" />
           힌트
