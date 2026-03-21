@@ -1,23 +1,31 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import Header from "@/components/layout/Header";
+import type { Metadata } from "next"
+import { Inter } from "next/font/google"
+import { Analytics } from "@vercel/analytics/next"
+import "./globals.css"
+import Header from "@/components/layout/Header"
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+})
 
 export const metadata: Metadata = {
-  title: "ShadowTube - YouTube 섀도잉 학습",
-  description: "YouTube 영상으로 효과적인 섀도잉 언어 학습",
-};
+  title: "ShadowTube - YouTube 섀도잉",
+  description: "YouTube 영상으로 영어 섀도잉 연습을 시작하세요",
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
     <html lang="ko">
-      <body className="bg-gray-50 min-h-screen antialiased">
+      <body className={`${inter.variable} font-sans antialiased`}>
         <Header />
-        <main className="max-w-4xl mx-auto px-4 py-6">{children}</main>
+        <main className="mx-auto max-w-4xl px-4 py-6">{children}</main>
+        <Analytics />
       </body>
     </html>
-  );
+  )
 }
