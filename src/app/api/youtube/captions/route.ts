@@ -117,42 +117,54 @@ function splitIntoSentences(
   chunks: { text: string; startTime: number; endTime: number }[]
 ): Caption[] {
   const captions: Caption[] = [];
-  let buffer = "";
-  let sentenceStart = 0;
-  let sentenceEnd = 0;
+  let pending = "";          // accumulated text not yet forming a sentence
+  let pendingStart = 0;      // startTime of the pending fragment
+  let lastChunkEnd = 0;
   let idx = 0;
 
   for (const chunk of chunks) {
-    if (!buffer) sentenceStart = chunk.startTime;
-    sentenceEnd = chunk.endTime;
+    lastChunkEnd = chunk.endTime;
+    const chunkDuration = chunk.endTime - chunk.startTime;
 
-    if (buffer) buffer += " ";
-    buffer += chunk.text;
+    if (!pending) pendingStart = chunk.startTime;
 
-    // Extract all complete sentences from the buffer
-    // Sentence ends at [.!?] followed by whitespace or end of string
-    let match: RegExpExecArray | null;
+    // pendingLen = how many chars in `combined` belong to previous chunks
+    const pendingLen = pending ? pending.length + 1 : 0; // +1 for the joining space
+    const combined = pending ? pending + " " + chunk.text : chunk.text;
+
+    let lastPos = 0;
     const re = /[.!?](?=\s|$)/g;
-    let lastEnd = 0;
+    let match: RegExpExecArray | null;
 
-    while ((match = re.exec(buffer)) !== null) {
-      const end = match.index + 1;
-      const sentence = buffer.slice(lastEnd, end).trim();
+    while ((match = re.exec(combined)) !== null) {
+      const endPos = match.index + 1;
+      const sentence = combined.slice(lastPos, endPos).trim();
+
       if (sentence) {
-        captions.push({ index: idx++, startTime: sentenceStart, endTime: sentenceEnd, textEn: sentence });
-        sentenceStart = chunk.startTime; // approximate for subsequent sentences in same chunk
+        // Estimate end time by proportional character position within the current chunk
+        const posInChunk = endPos - pendingLen;
+        let estEnd: number;
+        if (posInChunk <= 0) {
+          estEnd = chunk.startTime; // sentence ended entirely in previous chunk(s)
+        } else {
+          const ratio = Math.min(1, posInChunk / chunk.text.length);
+          estEnd = chunk.startTime + chunkDuration * ratio;
+        }
+
+        captions.push({ index: idx++, startTime: pendingStart, endTime: estEnd, textEn: sentence });
+        pendingStart = estEnd;
       }
-      lastEnd = end;
-      // skip trailing whitespace
-      while (lastEnd < buffer.length && buffer[lastEnd] === " ") lastEnd++;
+
+      lastPos = endPos;
+      while (lastPos < combined.length && combined[lastPos] === " ") lastPos++;
     }
 
-    buffer = buffer.slice(lastEnd);
+    pending = combined.slice(lastPos).trim();
   }
 
-  // flush remaining
-  if (buffer.trim()) {
-    captions.push({ index: idx++, startTime: sentenceStart, endTime: sentenceEnd, textEn: buffer.trim() });
+  // flush remaining fragment
+  if (pending) {
+    captions.push({ index: idx++, startTime: pendingStart, endTime: lastChunkEnd, textEn: pending });
   }
 
   return captions;
