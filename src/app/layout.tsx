@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import Header from "@/components/layout/Header"
 
@@ -24,7 +23,6 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans antialiased`}>
         <Header />
         <main className="mx-auto max-w-4xl px-4 py-6">{children}</main>
-        <Analytics />
       </body>
     </html>
   )
