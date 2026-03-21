@@ -8,13 +8,14 @@ interface TypingInputProps {
   correctAnswer: string;
   onCorrect: () => void;
   initialValue?: string;
+  initialResult?: ValidationResult | null;
   onValueChange?: (value: string) => void;
   disabled?: boolean;
 }
 
-export default function TypingInput({ correctAnswer, onCorrect, initialValue = "", onValueChange, disabled }: TypingInputProps) {
+export default function TypingInput({ correctAnswer, onCorrect, initialValue = "", initialResult = null, onValueChange, disabled }: TypingInputProps) {
   const [value, setValue] = useState(initialValue);
-  const [result, setResult] = useState<ValidationResult | null>(null);
+  const [result, setResult] = useState<ValidationResult | null>(initialResult);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

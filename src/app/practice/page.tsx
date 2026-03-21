@@ -28,12 +28,14 @@ function PracticeContent() {
   const [error, setError] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showResume, setShowResume] = useState(false);
+  const resumeShownRef = useRef(false); // guard against StrictMode double-fire
   const [completed, setCompleted] = useState(false);
   const [started, setStarted] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
 
-  // Persist user's typed input per sentence index
+  // Persist user's typed input + correct state per sentence index
   const [userInputs, setUserInputs] = useState<Record<number, string>>({});
+  const [correctSet, setCorrectSet] = useState<Set<number>>(new Set());
 
   // Audio state – lifted here so large controls + PracticeControls share it
   const [isPlaying, setIsPlaying] = useState(false);
@@ -67,7 +69,10 @@ function PracticeContent() {
         setCurrentVideo(info);
         addRecentVideo(id, data.videoTitle, data.thumbnailUrl, 0);
         const saved = getProgress(id);
-        if (saved && saved.lastPosition > 0) setShowResume(true);
+        if (saved && saved.lastPosition > 0 && !resumeShownRef.current) {
+          resumeShownRef.current = true;
+          setShowResume(true);
+        }
       } catch {
         setError("네트워크 오류가 발생했습니다");
       } finally {
@@ -144,6 +149,7 @@ function PracticeContent() {
 
   const handleCorrect = useCallback(() => {
     if (!videoInfo) return;
+    setCorrectSet((prev) => new Set(prev).add(currentIndex));
     markSentenceComplete(currentIndex);
     const newCompleted = [...completedSentences, currentIndex];
     saveProgress({
@@ -251,29 +257,24 @@ function PracticeContent() {
       ) : (
         <>
           {/* Large audio controls */}
-          <div className="flex items-center justify-center gap-6 py-4">
+          <div className="flex items-center justify-center gap-8 py-4">
             {/* Repeat */}
             <button
               onClick={() => toggleRepeat(caption)}
-              className={`p-3 rounded-full transition-colors ${isRepeating ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
-              title="반복재생"
+              className={`p-4 rounded-full shadow-sm transition-colors ${isRepeating ? "bg-blue-500 text-white shadow-blue-200" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+              title={isRepeating ? "반복 끄기" : "반복재생"}
             >
-              <ArrowPathIcon className="w-6 h-6" />
+              <ArrowPathIcon className="w-7 h-7" />
             </button>
 
             {/* Play / Pause */}
             <button
               onClick={() => isPlaying ? stopPlayback() : playSentence(caption)}
-              className={`p-5 rounded-full shadow-md transition-colors ${isPlaying ? "bg-red-100 text-red-600 border-2 border-red-300" : "bg-red-600 text-white hover:bg-red-700"}`}
+              className={`p-5 rounded-full shadow-md transition-colors ${isPlaying ? "bg-gray-800 text-white hover:bg-gray-700" : "bg-red-600 text-white hover:bg-red-700"}`}
               title={isPlaying ? "일시정지" : "재생"}
             >
               {isPlaying ? <PauseIcon className="w-8 h-8" /> : <PlayOutline className="w-8 h-8" />}
             </button>
-
-            {/* Repeat label */}
-            <div className="text-xs text-gray-400 w-12 text-center">
-              {isRepeating ? <span className="text-blue-500 font-medium">반복 중</span> : "반복"}
-            </div>
           </div>
 
           {/* Sentence card */}
@@ -289,6 +290,7 @@ function PracticeContent() {
               correctAnswer={caption.textEn}
               onCorrect={handleCorrect}
               initialValue={userInputs[currentIndex] ?? ""}
+              initialResult={correctSet.has(currentIndex) ? { isCorrect: true, errors: [] } : null}
               onValueChange={(v) => setUserInputs((prev) => ({ ...prev, [currentIndex]: v }))}
             />
 
