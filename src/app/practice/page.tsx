@@ -135,6 +135,13 @@ function PracticeContent() {
 
   if (!videoId) return null;
 
+  // DEBUG BANNER - remove after confirming new code loads
+  const DEBUG_BANNER = (
+    <div style={{background:'lime', color:'black', padding:'8px', fontWeight:'bold', textAlign:'center'}}>
+      ✅ NEW CODE v3 LOADED
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -185,6 +192,7 @@ function PracticeContent() {
 
   return (
     <div className="space-y-4">
+      {DEBUG_BANNER}
       {/* Hidden YouTube player – audio only, positioned off-screen */}
       <div
         aria-hidden="true"
