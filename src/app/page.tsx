@@ -34,7 +34,7 @@ export default function HomePage() {
           <span className="text-red-600">Shadow</span>Tube
         </h1>
         <p className="text-gray-500 text-lg">
-          ⭐ 서버확인 v999 ⭐ YouTube 영상으로 영어 섀도잉 연습을 시작하세요
+          YouTube 영상으로 영어 섀도잉 연습을 시작하세요
         </p>
       </div>
 
