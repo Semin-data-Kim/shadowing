@@ -32,6 +32,9 @@ function PracticeContent() {
   const [started, setStarted] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
 
+  // Persist user's typed input per sentence index
+  const [userInputs, setUserInputs] = useState<Record<number, string>>({});
+
   // Audio state – lifted here so large controls + PracticeControls share it
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRepeating, setIsRepeating] = useState(false);
@@ -158,6 +161,7 @@ function PracticeContent() {
 
   const handleResume = (resume: boolean) => {
     setShowResume(false);
+    setStarted(true);
     if (resume && videoId) {
       const progress = getProgress(videoId);
       if (progress) setCurrentIndex(progress.lastPosition);
@@ -280,7 +284,13 @@ function PracticeContent() {
 
             <SentenceDisplay caption={caption} />
 
-            <TypingInput key={currentIndex} correctAnswer={caption.textEn} onCorrect={handleCorrect} />
+            <TypingInput
+              key={currentIndex}
+              correctAnswer={caption.textEn}
+              onCorrect={handleCorrect}
+              initialValue={userInputs[currentIndex] ?? ""}
+              onValueChange={(v) => setUserInputs((prev) => ({ ...prev, [currentIndex]: v }))}
+            />
 
             <PracticeControls
               caption={caption}

@@ -7,19 +7,19 @@ import { ValidationResult } from "@/types";
 interface TypingInputProps {
   correctAnswer: string;
   onCorrect: () => void;
+  initialValue?: string;
+  onValueChange?: (value: string) => void;
   disabled?: boolean;
 }
 
-export default function TypingInput({ correctAnswer, onCorrect, disabled }: TypingInputProps) {
-  const [value, setValue] = useState("");
+export default function TypingInput({ correctAnswer, onCorrect, initialValue = "", onValueChange, disabled }: TypingInputProps) {
+  const [value, setValue] = useState(initialValue);
   const [result, setResult] = useState<ValidationResult | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setValue("");
-    setResult(null);
     if (!disabled) inputRef.current?.focus();
-  }, [correctAnswer, disabled]);
+  }, [disabled]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
@@ -70,6 +70,7 @@ export default function TypingInput({ correctAnswer, onCorrect, disabled }: Typi
         value={value}
         onChange={(e) => {
           setValue(e.target.value);
+          onValueChange?.(e.target.value);
           if (result?.isCorrect === false) setResult(null);
         }}
         onKeyDown={handleKeyDown}
