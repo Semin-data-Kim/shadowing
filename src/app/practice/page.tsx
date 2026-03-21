@@ -283,7 +283,7 @@ function PracticeContent() {
               문장 {currentIndex + 1} / {videoInfo.captions.length}
             </div>
 
-            <SentenceDisplay caption={caption} />
+            <SentenceDisplay caption={caption} isCompleted={correctSet.has(currentIndex)} />
 
             <TypingInput
               key={currentIndex}
@@ -320,7 +320,7 @@ function PracticeContent() {
               disabled={isLast}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              다음 문장 건너뛰기
+              다음 문장
               <NextIcon className="w-4 h-4" />
             </button>
           </div>
