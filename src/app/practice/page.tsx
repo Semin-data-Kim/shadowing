@@ -1,5 +1,5 @@
 "use client";
-// v2
+
 import { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Caption, VideoInfo } from "@/types";
@@ -22,7 +22,8 @@ function PracticeContent() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showResume, setShowResume] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const [playerStarted, setPlayerStarted] = useState(false);
+  // started: false = show big start button, true = show sentence practice
+  const [started, setStarted] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
 
   const playerRef = useRef<YouTubePlayerRef>(null);
@@ -83,12 +84,11 @@ function PracticeContent() {
     loadVideo(videoId);
   }, [videoId, loadVideo, router]);
 
-  // When player becomes ready, seek to the current sentence and pause
   const handlePlayerReady = useCallback(() => {
     setIsPlayerReady(true);
   }, []);
 
-  // Auto-seek to current sentence timestamp whenever sentence changes or player becomes ready
+  // Seek to current sentence whenever sentence changes or player becomes ready
   useEffect(() => {
     if (!isPlayerReady || !videoInfo) return;
     const caption = videoInfo.captions[currentIndex];
@@ -185,6 +185,23 @@ function PracticeContent() {
 
   return (
     <div className="space-y-4">
+      {/* Hidden YouTube player – audio only, positioned off-screen */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          bottom: 0,
+          right: 0,
+          width: "1px",
+          height: "1px",
+          overflow: "hidden",
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+      >
+        <YouTubePlayer ref={playerRef} videoId={videoId!} onReady={handlePlayerReady} />
+      </div>
+
       {/* Top bar */}
       <div className="flex items-center gap-3">
         <button
@@ -225,57 +242,44 @@ function PracticeContent() {
         </div>
       )}
 
-      {/* Video area: thumbnail start screen or YouTube player */}
-      {!playerStarted ? (
-        <button
-          onClick={() => setPlayerStarted(true)}
-          className="relative w-full aspect-video bg-black rounded-lg overflow-hidden group"
-        >
-          {videoInfo.thumbnailUrl ? (
-            <img
-              src={videoInfo.thumbnailUrl}
-              alt={videoInfo.videoTitle}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full bg-gray-900" />
-          )}
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 group-hover:bg-black/50 transition-colors">
-            <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-              <PlayIcon className="w-8 h-8 text-white ml-1" />
-            </div>
-            <p className="mt-3 text-white text-sm font-medium drop-shadow">
-              클릭하여 학습 시작
-            </p>
+      {/* Start screen */}
+      {!started ? (
+        <div className="flex flex-col items-center justify-center py-20 space-y-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-semibold text-gray-800">{videoInfo.videoTitle}</h2>
+            <p className="text-sm text-gray-500">총 {videoInfo.captions.length}개 문장</p>
           </div>
-        </button>
-      ) : (
-        <YouTubePlayer ref={playerRef} videoId={videoId} onReady={handlePlayerReady} />
-      )}
-
-      {/* Practice area */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-        <div className="flex justify-between items-center text-xs text-gray-400">
-          <span>문장 {currentIndex + 1} / {videoInfo.captions.length}</span>
+          <button
+            onClick={() => setStarted(true)}
+            className="flex items-center gap-3 px-8 py-4 bg-red-600 text-white rounded-2xl text-lg font-semibold hover:bg-red-700 transition-colors shadow-lg"
+          >
+            <PlayIcon className="w-6 h-6" />
+            학습 시작
+          </button>
         </div>
+      ) : (
+        /* Practice area */
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+          <div className="text-xs text-gray-400">
+            문장 {currentIndex + 1} / {videoInfo.captions.length}
+          </div>
 
-        <SentenceDisplay caption={caption} />
+          <SentenceDisplay caption={caption} />
 
-        <TypingInput
-          key={currentIndex}
-          correctAnswer={caption.textEn}
-          onCorrect={handleCorrect}
-        />
+          <TypingInput
+            key={currentIndex}
+            correctAnswer={caption.textEn}
+            onCorrect={handleCorrect}
+          />
 
-        <PracticeControls
-          caption={caption}
-          playerRef={playerRef}
-          videoId={videoInfo.videoId}
-          videoTitle={videoInfo.videoTitle}
-          onHint={() => {}}
-          showHint={false}
-        />
-      </div>
+          <PracticeControls
+            caption={caption}
+            playerRef={playerRef}
+            videoId={videoInfo.videoId}
+            videoTitle={videoInfo.videoTitle}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { SpeakerWaveIcon, BookmarkIcon } from "@heroicons/react/24/outline";
+import { useState, useRef, useCallback } from "react";
+import {
+  SpeakerWaveIcon,
+  BookmarkIcon,
+  ArrowPathIcon,
+} from "@heroicons/react/24/outline";
 import { BookmarkIcon as BookmarkSolid } from "@heroicons/react/24/solid";
 import { Caption, Bookmark } from "@/types";
 import { YouTubePlayerRef } from "@/components/player/YouTubePlayer";
@@ -14,8 +18,6 @@ interface PracticeControlsProps {
   playerRef: React.RefObject<YouTubePlayerRef | null>;
   videoId: string;
   videoTitle: string;
-  onHint: () => void;
-  showHint: boolean;
 }
 
 export default function PracticeControls({
@@ -23,20 +25,26 @@ export default function PracticeControls({
   playerRef,
   videoId,
   videoTitle,
-  onHint,
-  showHint,
 }: PracticeControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isRepeating, setIsRepeating] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isRepeatingRef = useRef(false);
   const { addBookmark, removeBookmark, isBookmarked, user } = useAppStore();
   const { show, ToastComponent } = useToast();
 
   const bookmarked = isBookmarked(videoId, caption.index);
 
-  const playSentence = () => {
-    if (!playerRef.current) return;
+  const stopInterval = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
 
-    if (intervalRef.current) clearInterval(intervalRef.current);
+  const playSentence = useCallback(() => {
+    if (!playerRef.current) return;
+    stopInterval();
 
     playerRef.current.seekTo(caption.startTime);
     playerRef.current.playVideo();
@@ -45,11 +53,28 @@ export default function PracticeControls({
     intervalRef.current = setInterval(() => {
       const current = playerRef.current?.getCurrentTime() ?? 0;
       if (current >= caption.endTime) {
-        playerRef.current?.pauseVideo();
-        setIsPlaying(false);
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        if (isRepeatingRef.current) {
+          playerRef.current?.seekTo(caption.startTime);
+          playerRef.current?.playVideo();
+        } else {
+          playerRef.current?.pauseVideo();
+          setIsPlaying(false);
+          stopInterval();
+        }
       }
     }, 100);
+  }, [caption, playerRef, stopInterval]);
+
+  const toggleRepeat = () => {
+    const next = !isRepeating;
+    isRepeatingRef.current = next;
+    setIsRepeating(next);
+    if (next) playSentence();
+    else {
+      playerRef.current?.pauseVideo();
+      setIsPlaying(false);
+      stopInterval();
+    }
   };
 
   const handleBookmark = () => {
@@ -59,7 +84,6 @@ export default function PracticeControls({
     }
 
     if (bookmarked) {
-      // Find and remove
       const store = useAppStore.getState();
       const bm = store.bookmarks.find(
         (b) => b.videoId === videoId && b.timestamp === caption.index
@@ -92,13 +116,25 @@ export default function PracticeControls({
         <button
           onClick={playSentence}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            isPlaying
+            isPlaying && !isRepeating
               ? "bg-red-100 text-red-600 border border-red-200"
               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
           <SpeakerWaveIcon className="w-4 h-4" />
-          {isPlaying ? "재생 중..." : "재생"}
+          {isPlaying && !isRepeating ? "재생 중..." : "재생"}
+        </button>
+
+        <button
+          onClick={toggleRepeat}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            isRepeating
+              ? "bg-blue-100 text-blue-600 border border-blue-200"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          <ArrowPathIcon className="w-4 h-4" />
+          {isRepeating ? "반복 중..." : "반복"}
         </button>
 
         <button

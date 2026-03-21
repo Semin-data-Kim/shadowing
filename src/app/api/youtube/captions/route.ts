@@ -82,13 +82,13 @@ export async function GET(request: NextRequest) {
       // Korean captions are optional
     }
 
-    const captions: Caption[] = enTranscript.map((c, i) => ({
-      index: i,
+    const rawChunks = enTranscript.map((c) => ({
+      text: decodeHtmlEntities(c.text),
       startTime: c.offset / 1000,
       endTime: (c.offset + c.duration) / 1000,
-      textEn: c.text,
-      textKo: koTranscript?.[i]?.text,
     }));
+
+    const captions = splitIntoSentences(rawChunks);
 
     return NextResponse.json({ videoTitle, thumbnailUrl, captions });
   } catch (err) {
@@ -98,6 +98,64 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitIntoSentences(
+  chunks: { text: string; startTime: number; endTime: number }[]
+): Caption[] {
+  const captions: Caption[] = [];
+  let buffer = "";
+  let sentenceStart = 0;
+  let sentenceEnd = 0;
+  let idx = 0;
+
+  for (const chunk of chunks) {
+    if (!buffer) sentenceStart = chunk.startTime;
+    sentenceEnd = chunk.endTime;
+
+    if (buffer) buffer += " ";
+    buffer += chunk.text;
+
+    // Extract all complete sentences from the buffer
+    // Sentence ends at [.!?] followed by whitespace or end of string
+    let match: RegExpExecArray | null;
+    const re = /[.!?](?=\s|$)/g;
+    let lastEnd = 0;
+
+    while ((match = re.exec(buffer)) !== null) {
+      const end = match.index + 1;
+      const sentence = buffer.slice(lastEnd, end).trim();
+      if (sentence) {
+        captions.push({ index: idx++, startTime: sentenceStart, endTime: sentenceEnd, textEn: sentence });
+        sentenceStart = chunk.startTime; // approximate for subsequent sentences in same chunk
+      }
+      lastEnd = end;
+      // skip trailing whitespace
+      while (lastEnd < buffer.length && buffer[lastEnd] === " ") lastEnd++;
+    }
+
+    buffer = buffer.slice(lastEnd);
+  }
+
+  // flush remaining
+  if (buffer.trim()) {
+    captions.push({ index: idx++, startTime: sentenceStart, endTime: sentenceEnd, textEn: buffer.trim() });
+  }
+
+  return captions;
 }
 
 /** Returns true if the video has at least one manually added English caption track (not asr). */
