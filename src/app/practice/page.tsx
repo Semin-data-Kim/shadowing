@@ -10,6 +10,13 @@ import TypingInput from "@/components/practice/TypingInput";
 import PracticeControls from "@/components/practice/PracticeControls";
 import ProgressBar from "@/components/ui/ProgressBar";
 import { ArrowLeftIcon, PlayIcon } from "@heroicons/react/24/solid";
+import {
+  PlayIcon as PlayOutline,
+  PauseIcon,
+  ArrowPathIcon,
+  ArrowLeftIcon as PrevIcon,
+  ArrowRightIcon as NextIcon,
+} from "@heroicons/react/24/outline";
 
 function PracticeContent() {
   const router = useRouter();
@@ -22,9 +29,14 @@ function PracticeContent() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showResume, setShowResume] = useState(false);
   const [completed, setCompleted] = useState(false);
-  // started: false = show big start button, true = show sentence practice
   const [started, setStarted] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
+
+  // Audio state – lifted here so large controls + PracticeControls share it
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isRepeating, setIsRepeating] = useState(false);
+  const isRepeatingRef = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const playerRef = useRef<YouTubePlayerRef>(null);
 
@@ -46,27 +58,13 @@ function PracticeContent() {
       try {
         const res = await fetch(`/api/youtube/captions?videoId=${id}`);
         const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.error || "자막을 불러오는데 실패했습니다");
-          return;
-        }
-
-        const info: VideoInfo = {
-          videoId: id,
-          videoTitle: data.videoTitle,
-          thumbnailUrl: data.thumbnailUrl,
-          captions: data.captions,
-        };
-
+        if (!res.ok) { setError(data.error || "자막을 불러오는데 실패했습니다"); return; }
+        const info: VideoInfo = { videoId: id, videoTitle: data.videoTitle, thumbnailUrl: data.thumbnailUrl, captions: data.captions };
         setVideoInfo(info);
         setCurrentVideo(info);
         addRecentVideo(id, data.videoTitle, data.thumbnailUrl, 0);
-
-        const savedProgress = getProgress(id);
-        if (savedProgress && savedProgress.lastPosition > 0) {
-          setShowResume(true);
-        }
+        const saved = getProgress(id);
+        if (saved && saved.lastPosition > 0) setShowResume(true);
       } catch {
         setError("네트워크 오류가 발생했습니다");
       } finally {
@@ -77,18 +75,13 @@ function PracticeContent() {
   );
 
   useEffect(() => {
-    if (!videoId) {
-      router.push("/");
-      return;
-    }
+    if (!videoId) { router.push("/"); return; }
     loadVideo(videoId);
   }, [videoId, loadVideo, router]);
 
-  const handlePlayerReady = useCallback(() => {
-    setIsPlayerReady(true);
-  }, []);
+  const handlePlayerReady = useCallback(() => setIsPlayerReady(true), []);
 
-  // Seek to current sentence whenever sentence changes or player becomes ready
+  // Seek to current sentence whenever it changes or player becomes ready
   useEffect(() => {
     if (!isPlayerReady || !videoInfo) return;
     const caption = videoInfo.captions[currentIndex];
@@ -97,11 +90,58 @@ function PracticeContent() {
     playerRef.current?.pauseVideo();
   }, [currentIndex, isPlayerReady, videoInfo]);
 
-  const handleCorrect = () => {
+  // Stop playback when sentence changes
+  useEffect(() => {
+    stopPlayback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex]);
+
+  // ── Audio controls ──────────────────────────────────────────────
+  const stopPlayback = useCallback(() => {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    playerRef.current?.pauseVideo();
+    setIsPlaying(false);
+    isRepeatingRef.current = false;
+    setIsRepeating(false);
+  }, []);
+
+  const playSentence = useCallback((caption: Caption) => {
+    if (!playerRef.current) return;
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    playerRef.current.seekTo(caption.startTime);
+    playerRef.current.playVideo();
+    setIsPlaying(true);
+    intervalRef.current = setInterval(() => {
+      const current = playerRef.current?.getCurrentTime() ?? 0;
+      if (current >= caption.endTime) {
+        if (isRepeatingRef.current) {
+          playerRef.current?.seekTo(caption.startTime);
+          playerRef.current?.playVideo();
+        } else {
+          playerRef.current?.pauseVideo();
+          setIsPlaying(false);
+          if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+        }
+      }
+    }, 100);
+  }, []);
+
+  const toggleRepeat = useCallback((caption: Caption) => {
+    const next = !isRepeatingRef.current;
+    isRepeatingRef.current = next;
+    setIsRepeating(next);
+    if (next) playSentence(caption);
+    else {
+      playerRef.current?.pauseVideo();
+      setIsPlaying(false);
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    }
+  }, [playSentence]);
+  // ────────────────────────────────────────────────────────────────
+
+  const handleCorrect = useCallback(() => {
     if (!videoInfo) return;
-
     markSentenceComplete(currentIndex);
-
     const newCompleted = [...completedSentences, currentIndex];
     saveProgress({
       userId: user?.userId ?? "guest",
@@ -112,21 +152,15 @@ function PracticeContent() {
       lastPosition: currentIndex + 1,
       updatedAt: new Date(),
     });
-
-    if (currentIndex + 1 >= videoInfo.captions.length) {
-      setCompleted(true);
-    } else {
-      setCurrentIndex(currentIndex + 1);
-    }
-  };
+    if (currentIndex + 1 >= videoInfo.captions.length) setCompleted(true);
+    else setCurrentIndex(currentIndex + 1);
+  }, [videoInfo, currentIndex, completedSentences, markSentenceComplete, saveProgress, user]);
 
   const handleResume = (resume: boolean) => {
     setShowResume(false);
     if (resume && videoId) {
       const progress = getProgress(videoId);
-      if (progress) {
-        setCurrentIndex(progress.lastPosition);
-      }
+      if (progress) setCurrentIndex(progress.lastPosition);
     } else {
       resetProgress();
       setCurrentIndex(0);
@@ -135,86 +169,52 @@ function PracticeContent() {
 
   if (!videoId) return null;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-gray-500">자막을 불러오는 중...</p>
-        </div>
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="text-center space-y-3">
+        <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-sm text-gray-500">자막을 불러오는 중...</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (error) {
-    return (
-      <div className="text-center py-16 space-y-4">
-        <div className="text-5xl">😢</div>
-        <p className="text-red-500 font-medium">{error}</p>
-        <button
-          onClick={() => router.push("/")}
-          className="text-sm text-gray-500 hover:text-gray-700 underline"
-        >
-          홈으로 돌아가기
-        </button>
-      </div>
-    );
-  }
+  if (error) return (
+    <div className="text-center py-16 space-y-4">
+      <div className="text-5xl">😢</div>
+      <p className="text-red-500 font-medium">{error}</p>
+      <button onClick={() => router.push("/")} className="text-sm text-gray-500 hover:text-gray-700 underline">홈으로 돌아가기</button>
+    </div>
+  );
 
   if (!videoInfo) return null;
 
   const caption: Caption = videoInfo.captions[currentIndex];
+  const isFirst = currentIndex === 0;
+  const isLast = currentIndex === videoInfo.captions.length - 1;
 
-  if (completed) {
-    return (
-      <div className="text-center py-16 space-y-4">
-        <div className="text-6xl">🎉</div>
-        <h2 className="text-2xl font-bold text-gray-800">완료!</h2>
-        <p className="text-gray-500">
-          모든 {videoInfo.captions.length}개 문장을 완료했습니다!
-        </p>
-        <button
-          onClick={() => router.push("/")}
-          className="px-6 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
-        >
-          홈으로
-        </button>
-      </div>
-    );
-  }
+  if (completed) return (
+    <div className="text-center py-16 space-y-4">
+      <div className="text-6xl">🎉</div>
+      <h2 className="text-2xl font-bold text-gray-800">완료!</h2>
+      <p className="text-gray-500">모든 {videoInfo.captions.length}개 문장을 완료했습니다!</p>
+      <button onClick={() => router.push("/")} className="px-6 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">홈으로</button>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
-      {/* Hidden YouTube player – audio only, positioned off-screen */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "fixed",
-          bottom: 0,
-          right: 0,
-          width: "1px",
-          height: "1px",
-          overflow: "hidden",
-          opacity: 0,
-          pointerEvents: "none",
-        }}
-      >
+      {/* Hidden YouTube player */}
+      <div aria-hidden="true" style={{ position: "fixed", bottom: 0, right: 0, width: "1px", height: "1px", overflow: "hidden", opacity: 0, pointerEvents: "none" }}>
         <YouTubePlayer ref={playerRef} videoId={videoId!} onReady={handlePlayerReady} />
       </div>
 
       {/* Top bar */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => router.push("/")}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-        >
+        <button onClick={() => router.push("/")} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
           <ArrowLeftIcon className="w-5 h-5 text-gray-600" />
         </button>
         <div className="flex-1">
-          <ProgressBar
-            completed={completedSentences.length}
-            total={videoInfo.captions.length}
-          />
+          <ProgressBar completed={completedSentences.length} total={videoInfo.captions.length} />
         </div>
       </div>
 
@@ -225,18 +225,8 @@ function PracticeContent() {
             <h3 className="text-lg font-semibold text-gray-800">이어서 학습할까요?</h3>
             <p className="text-sm text-gray-500">이전 학습 기록이 있습니다.</p>
             <div className="flex gap-2">
-              <button
-                onClick={() => handleResume(true)}
-                className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm hover:bg-red-700"
-              >
-                이어서 학습
-              </button>
-              <button
-                onClick={() => handleResume(false)}
-                className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200"
-              >
-                처음부터
-              </button>
+              <button onClick={() => handleResume(true)} className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm hover:bg-red-700">이어서 학습</button>
+              <button onClick={() => handleResume(false)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">처음부터</button>
             </div>
           </div>
         </div>
@@ -249,36 +239,80 @@ function PracticeContent() {
             <h2 className="text-xl font-semibold text-gray-800">{videoInfo.videoTitle}</h2>
             <p className="text-sm text-gray-500">총 {videoInfo.captions.length}개 문장</p>
           </div>
-          <button
-            onClick={() => setStarted(true)}
-            className="flex items-center gap-3 px-8 py-4 bg-red-600 text-white rounded-2xl text-lg font-semibold hover:bg-red-700 transition-colors shadow-lg"
-          >
+          <button onClick={() => setStarted(true)} className="flex items-center gap-3 px-8 py-4 bg-red-600 text-white rounded-2xl text-lg font-semibold hover:bg-red-700 transition-colors shadow-lg">
             <PlayIcon className="w-6 h-6" />
             학습 시작
           </button>
         </div>
       ) : (
-        /* Practice area */
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-          <div className="text-xs text-gray-400">
-            문장 {currentIndex + 1} / {videoInfo.captions.length}
+        <>
+          {/* Large audio controls */}
+          <div className="flex items-center justify-center gap-6 py-4">
+            {/* Repeat */}
+            <button
+              onClick={() => toggleRepeat(caption)}
+              className={`p-3 rounded-full transition-colors ${isRepeating ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+              title="반복재생"
+            >
+              <ArrowPathIcon className="w-6 h-6" />
+            </button>
+
+            {/* Play / Pause */}
+            <button
+              onClick={() => isPlaying ? stopPlayback() : playSentence(caption)}
+              className={`p-5 rounded-full shadow-md transition-colors ${isPlaying ? "bg-red-100 text-red-600 border-2 border-red-300" : "bg-red-600 text-white hover:bg-red-700"}`}
+              title={isPlaying ? "일시정지" : "재생"}
+            >
+              {isPlaying ? <PauseIcon className="w-8 h-8" /> : <PlayOutline className="w-8 h-8" />}
+            </button>
+
+            {/* Repeat label */}
+            <div className="text-xs text-gray-400 w-12 text-center">
+              {isRepeating ? <span className="text-blue-500 font-medium">반복 중</span> : "반복"}
+            </div>
           </div>
 
-          <SentenceDisplay caption={caption} />
+          {/* Sentence card */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+            <div className="text-xs text-gray-400">
+              문장 {currentIndex + 1} / {videoInfo.captions.length}
+            </div>
 
-          <TypingInput
-            key={currentIndex}
-            correctAnswer={caption.textEn}
-            onCorrect={handleCorrect}
-          />
+            <SentenceDisplay caption={caption} />
 
-          <PracticeControls
-            caption={caption}
-            playerRef={playerRef}
-            videoId={videoInfo.videoId}
-            videoTitle={videoInfo.videoTitle}
-          />
-        </div>
+            <TypingInput key={currentIndex} correctAnswer={caption.textEn} onCorrect={handleCorrect} />
+
+            <PracticeControls
+              caption={caption}
+              videoId={videoInfo.videoId}
+              videoTitle={videoInfo.videoTitle}
+              isPlaying={isPlaying}
+              isRepeating={isRepeating}
+              onPlay={() => isPlaying ? stopPlayback() : playSentence(caption)}
+              onToggleRepeat={() => toggleRepeat(caption)}
+            />
+          </div>
+
+          {/* Prev / Next navigation */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => !isFirst && setCurrentIndex(currentIndex - 1)}
+              disabled={isFirst}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <PrevIcon className="w-4 h-4" />
+              이전 문장
+            </button>
+            <button
+              onClick={() => !isLast && setCurrentIndex(currentIndex + 1)}
+              disabled={isLast}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              다음 문장 건너뛰기
+              <NextIcon className="w-4 h-4" />
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

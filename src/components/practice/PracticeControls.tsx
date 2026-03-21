@@ -1,97 +1,51 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
 import {
   SpeakerWaveIcon,
   BookmarkIcon,
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
-import { BookmarkIcon as BookmarkSolid } from "@heroicons/react/24/solid";
+import { BookmarkIcon as BookmarkSolid, PlayIcon, PauseIcon } from "@heroicons/react/24/solid";
 import { Caption, Bookmark } from "@/types";
-import { YouTubePlayerRef } from "@/components/player/YouTubePlayer";
 import { useAppStore } from "@/store/useAppStore";
 import { useToast } from "@/components/ui/Toast";
 import { formatTime } from "@/lib/validation";
 
 interface PracticeControlsProps {
   caption: Caption;
-  playerRef: React.RefObject<YouTubePlayerRef | null>;
   videoId: string;
   videoTitle: string;
+  isPlaying: boolean;
+  isRepeating: boolean;
+  onPlay: () => void;
+  onToggleRepeat: () => void;
 }
 
 export default function PracticeControls({
   caption,
-  playerRef,
   videoId,
   videoTitle,
+  isPlaying,
+  isRepeating,
+  onPlay,
+  onToggleRepeat,
 }: PracticeControlsProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isRepeating, setIsRepeating] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isRepeatingRef = useRef(false);
   const { addBookmark, removeBookmark, isBookmarked, user } = useAppStore();
   const { show, ToastComponent } = useToast();
 
   const bookmarked = isBookmarked(videoId, caption.index);
-
-  const stopInterval = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  const playSentence = useCallback(() => {
-    if (!playerRef.current) return;
-    stopInterval();
-
-    playerRef.current.seekTo(caption.startTime);
-    playerRef.current.playVideo();
-    setIsPlaying(true);
-
-    intervalRef.current = setInterval(() => {
-      const current = playerRef.current?.getCurrentTime() ?? 0;
-      if (current >= caption.endTime) {
-        if (isRepeatingRef.current) {
-          playerRef.current?.seekTo(caption.startTime);
-          playerRef.current?.playVideo();
-        } else {
-          playerRef.current?.pauseVideo();
-          setIsPlaying(false);
-          stopInterval();
-        }
-      }
-    }, 100);
-  }, [caption, playerRef, stopInterval]);
-
-  const toggleRepeat = () => {
-    const next = !isRepeating;
-    isRepeatingRef.current = next;
-    setIsRepeating(next);
-    if (next) playSentence();
-    else {
-      playerRef.current?.pauseVideo();
-      setIsPlaying(false);
-      stopInterval();
-    }
-  };
 
   const handleBookmark = () => {
     if (!user) {
       show("로그인이 필요합니다", "error");
       return;
     }
-
     if (bookmarked) {
       const store = useAppStore.getState();
       const bm = store.bookmarks.find(
         (b) => b.videoId === videoId && b.timestamp === caption.index
       );
-      if (bm) {
-        removeBookmark(bm.bookmarkId);
-        show("북마크가 삭제되었습니다", "info");
-      }
+      if (bm) { removeBookmark(bm.bookmarkId); show("북마크가 삭제되었습니다", "info"); }
     } else {
       const bookmark: Bookmark = {
         bookmarkId: `${videoId}-${caption.index}-${Date.now()}`,
@@ -113,8 +67,9 @@ export default function PracticeControls({
     <>
       {ToastComponent}
       <div className="flex items-center gap-2 flex-wrap">
+        {/* Play */}
         <button
-          onClick={playSentence}
+          onClick={onPlay}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
             isPlaying && !isRepeating
               ? "bg-red-100 text-red-600 border border-red-200"
@@ -125,8 +80,9 @@ export default function PracticeControls({
           {isPlaying && !isRepeating ? "재생 중..." : "재생"}
         </button>
 
+        {/* Repeat */}
         <button
-          onClick={toggleRepeat}
+          onClick={onToggleRepeat}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
             isRepeating
               ? "bg-blue-100 text-blue-600 border border-blue-200"
@@ -137,6 +93,7 @@ export default function PracticeControls({
           {isRepeating ? "반복 중..." : "반복"}
         </button>
 
+        {/* Bookmark */}
         <button
           onClick={handleBookmark}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -145,17 +102,11 @@ export default function PracticeControls({
               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
-          {bookmarked ? (
-            <BookmarkSolid className="w-4 h-4 text-yellow-500" />
-          ) : (
-            <BookmarkIcon className="w-4 h-4" />
-          )}
+          {bookmarked ? <BookmarkSolid className="w-4 h-4 text-yellow-500" /> : <BookmarkIcon className="w-4 h-4" />}
           북마크
         </button>
 
-        <span className="ml-auto text-xs text-gray-400">
-          {formatTime(caption.startTime)}
-        </span>
+        <span className="ml-auto text-xs text-gray-400">{formatTime(caption.startTime)}</span>
       </div>
     </>
   );
