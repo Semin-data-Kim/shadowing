@@ -291,7 +291,7 @@ function PracticeContent() {
               문장 {currentIndex + 1} / {videoInfo.captions.length}
             </div>
 
-            <SentenceDisplay key={currentIndex} caption={caption} isCompleted={correctSet.has(currentIndex)} />
+            <SentenceDisplay key={`sentence-${currentIndex}`} caption={caption} isCompleted={correctSet.has(currentIndex)} />
 
             <TypingInput
               key={currentIndex}
