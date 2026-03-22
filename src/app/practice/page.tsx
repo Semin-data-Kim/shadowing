@@ -22,6 +22,7 @@ function PracticeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const videoId = searchParams.get("videoId");
+  const startTimeParam = searchParams.get("t");
 
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -68,10 +69,17 @@ function PracticeContent() {
         setVideoInfo(info);
         setCurrentVideo(info);
         addRecentVideo(id, data.videoTitle, data.thumbnailUrl, 0);
-        const saved = getProgress(id);
-        if (saved && saved.lastPosition > 0 && !resumeShownRef.current) {
-          resumeShownRef.current = true;
-          setShowResume(true);
+        if (startTimeParam) {
+          const targetTime = parseFloat(startTimeParam);
+          const idx = (data.captions as Caption[]).findIndex((c) => c.endTime > targetTime);
+          setCurrentIndex(idx >= 0 ? idx : 0);
+          setStarted(true);
+        } else {
+          const saved = getProgress(id);
+          if (saved && saved.lastPosition > 0 && !resumeShownRef.current) {
+            resumeShownRef.current = true;
+            setShowResume(true);
+          }
         }
       } catch {
         setError("네트워크 오류가 발생했습니다");
@@ -79,7 +87,7 @@ function PracticeContent() {
         setLoading(false);
       }
     },
-    [getProgress, setCurrentVideo, addRecentVideo]
+    [getProgress, setCurrentVideo, addRecentVideo, startTimeParam]
   );
 
   useEffect(() => {
@@ -283,7 +291,7 @@ function PracticeContent() {
               문장 {currentIndex + 1} / {videoInfo.captions.length}
             </div>
 
-            <SentenceDisplay caption={caption} isCompleted={correctSet.has(currentIndex)} />
+            <SentenceDisplay key={currentIndex} caption={caption} isCompleted={correctSet.has(currentIndex)} />
 
             <TypingInput
               key={currentIndex}

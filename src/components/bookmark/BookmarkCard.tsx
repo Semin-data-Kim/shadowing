@@ -15,7 +15,7 @@ export default function BookmarkCard({ bookmark }: BookmarkCardProps) {
   const { removeBookmark } = useAppStore();
 
   const handlePlay = () => {
-    router.push(`/practice?url=${encodeURIComponent(bookmark.videoUrl)}`);
+    router.push(`/practice?videoId=${bookmark.videoId}&t=${bookmark.timestamp}`);
   };
 
   return (
