@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { VideoInfo, VideoProgress, Bookmark, User } from "@/types";
+import {
+  insertBookmarkToDB,
+  deleteBookmarkFromDB,
+  upsertProgressToDB,
+} from "@/lib/db";
 
 interface AppState {
   // Auth
@@ -57,24 +62,25 @@ export const useAppStore = create<AppState>()(
         set({ completedSentences: [], currentSentenceIndex: 0 }),
 
       progressMap: {},
-      saveProgress: (progress) =>
+      saveProgress: (progress) => {
         set((state) => ({
-          progressMap: {
-            ...state.progressMap,
-            [progress.videoId]: progress,
-          },
-        })),
+          progressMap: { ...state.progressMap, [progress.videoId]: progress },
+        }));
+        if (get().user) upsertProgressToDB(progress).catch(console.error);
+      },
       getProgress: (videoId) => get().progressMap[videoId] || null,
 
       bookmarks: [],
-      addBookmark: (bookmark) =>
-        set((state) => ({
-          bookmarks: [bookmark, ...state.bookmarks],
-        })),
-      removeBookmark: (bookmarkId) =>
+      addBookmark: (bookmark) => {
+        set((state) => ({ bookmarks: [bookmark, ...state.bookmarks] }));
+        if (get().user) insertBookmarkToDB(bookmark).catch(console.error);
+      },
+      removeBookmark: (bookmarkId) => {
         set((state) => ({
           bookmarks: state.bookmarks.filter((b) => b.bookmarkId !== bookmarkId),
-        })),
+        }));
+        if (get().user) deleteBookmarkFromDB(bookmarkId).catch(console.error);
+      },
       isBookmarked: (videoId, sentenceIndex) =>
         get().bookmarks.some(
           (b) => b.videoId === videoId && b.timestamp === sentenceIndex
