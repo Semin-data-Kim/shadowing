@@ -39,6 +39,7 @@ export interface Bookmark {
   videoTitle: string;
   videoUrl: string;
   timestamp: number;
+  totalSentences?: number;
   sentenceEn: string;
   sentenceKo?: string;
   createdAt: Date;

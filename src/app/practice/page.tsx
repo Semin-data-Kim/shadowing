@@ -22,7 +22,7 @@ function PracticeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const videoId = searchParams.get("videoId");
-  const startTimeParam = searchParams.get("t");
+  const idxParam = searchParams.get("idx");
 
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +45,7 @@ function PracticeContent() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const playerRef = useRef<YouTubePlayerRef>(null);
+  const isPlayerReadyRef = useRef(false);
 
   const {
     completedSentences,
@@ -69,10 +70,9 @@ function PracticeContent() {
         setVideoInfo(info);
         setCurrentVideo(info);
         addRecentVideo(id, data.videoTitle, data.thumbnailUrl, 0);
-        if (startTimeParam) {
-          const targetTime = parseFloat(startTimeParam);
-          const idx = (data.captions as Caption[]).findIndex((c) => c.endTime > targetTime);
-          setCurrentIndex(idx >= 0 ? idx : 0);
+        if (idxParam !== null) {
+          const idx = parseInt(idxParam, 10);
+          setCurrentIndex(Math.min(Math.max(idx, 0), data.captions.length - 1));
           setStarted(true);
         } else {
           const saved = getProgress(id);
@@ -87,7 +87,7 @@ function PracticeContent() {
         setLoading(false);
       }
     },
-    [getProgress, setCurrentVideo, addRecentVideo, startTimeParam]
+    [getProgress, setCurrentVideo, addRecentVideo, idxParam]
   );
 
   useEffect(() => {
@@ -95,7 +95,10 @@ function PracticeContent() {
     loadVideo(videoId);
   }, [videoId, loadVideo, router]);
 
-  const handlePlayerReady = useCallback(() => setIsPlayerReady(true), []);
+  const handlePlayerReady = useCallback(() => {
+    setIsPlayerReady(true);
+    isPlayerReadyRef.current = true;
+  }, []);
 
   // Seek to current sentence whenever it changes or player becomes ready
   useEffect(() => {
@@ -115,7 +118,7 @@ function PracticeContent() {
   // ── Audio controls ──────────────────────────────────────────────
   const stopPlayback = useCallback(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-    playerRef.current?.pauseVideo();
+    if (isPlayerReadyRef.current) playerRef.current?.pauseVideo();
     setIsPlaying(false);
     isRepeatingRef.current = false;
     setIsRepeating(false);
@@ -306,6 +309,7 @@ function PracticeContent() {
               caption={caption}
               videoId={videoInfo.videoId}
               videoTitle={videoInfo.videoTitle}
+              totalSentences={videoInfo.captions.length}
               isPlaying={isPlaying}
               isRepeating={isRepeating}
               onPlay={() => isPlaying ? stopPlayback() : playSentence(caption)}

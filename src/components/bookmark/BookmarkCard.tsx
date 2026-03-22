@@ -15,7 +15,7 @@ export default function BookmarkCard({ bookmark }: BookmarkCardProps) {
   const { removeBookmark } = useAppStore();
 
   const handlePlay = () => {
-    router.push(`/practice?videoId=${bookmark.videoId}&t=${bookmark.timestamp}`);
+    router.push(`/practice?videoId=${bookmark.videoId}&idx=${bookmark.timestamp}`);
   };
 
   return (
@@ -39,7 +39,7 @@ export default function BookmarkCard({ bookmark }: BookmarkCardProps) {
         )}
         <div className="flex items-center justify-between mt-2">
           <span className="text-xs text-gray-400">
-            {formatTime(bookmark.timestamp)} &middot;{" "}
+            문장 {bookmark.timestamp + 1}{bookmark.totalSentences ? ` / ${bookmark.totalSentences}` : ""} &middot;{" "}
             {new Date(bookmark.createdAt).toLocaleDateString("ko-KR")}
           </span>
           <div className="flex gap-1">

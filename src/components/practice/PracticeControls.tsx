@@ -15,6 +15,7 @@ interface PracticeControlsProps {
   caption: Caption;
   videoId: string;
   videoTitle: string;
+  totalSentences: number;
   isPlaying: boolean;
   isRepeating: boolean;
   onPlay: () => void;
@@ -25,6 +26,7 @@ export default function PracticeControls({
   caption,
   videoId,
   videoTitle,
+  totalSentences,
   isPlaying,
   isRepeating,
   onPlay,
@@ -54,6 +56,7 @@ export default function PracticeControls({
         videoTitle,
         videoUrl: `https://www.youtube.com/watch?v=${videoId}&t=${Math.floor(caption.startTime)}`,
         timestamp: caption.index,
+        totalSentences,
         sentenceEn: caption.textEn,
         sentenceKo: caption.textKo,
         createdAt: new Date(),

@@ -27,7 +27,24 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
-      setUser(session ? sessionToUser(session) : null);
+      if (session) {
+        const newUser = sessionToUser(session);
+        // Migrate guest progress records to real userId
+        const { progressMap } = useAppStore.getState();
+        const hasGuestProgress = Object.values(progressMap).some((p) => p.userId === "guest");
+        if (hasGuestProgress) {
+          const migrated = Object.fromEntries(
+            Object.entries(progressMap).map(([key, progress]) => [
+              key,
+              progress.userId === "guest" ? { ...progress, userId: newUser.userId } : progress,
+            ])
+          );
+          useAppStore.setState({ progressMap: migrated });
+        }
+        setUser(newUser);
+      } else {
+        setUser(null);
+      }
     });
 
     return () => subscription.unsubscribe();
